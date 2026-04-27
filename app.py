@@ -19,21 +19,18 @@ from sklearn.pipeline import Pipeline
 st.title("Life Insurance Policy Predictor")
 st.write("This app uses an AdaBoost model to predict policy type.")
 
-# Load dataset
 dataset = pd.read_csv("life_insurance_retention_dataset_full.csv")
 
-X = dataset.drop(columns=["policy_type"])
+# Drop columns that should not be used as prediction inputs
+X = dataset.drop(columns=["policy_type", "customer_id", "name", "policy_start_date"])
 y = dataset["policy_type"]
 
-# Encode target
 labelencoder = LabelEncoder()
 y_encoded = labelencoder.fit_transform(y)
 
-# Identify columns
-categorical_cols = X.select_dtypes(include=["object"]).columns.tolist()
-numerical_cols = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+categorical_cols = X.select_dtypes(include=["object", "string"]).columns.tolist()
+numerical_cols = X.select_dtypes(include=["number"]).columns.tolist()
 
-# Preprocessor
 preprocessor = ColumnTransformer(
     transformers=[
         ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols),
@@ -41,7 +38,6 @@ preprocessor = ColumnTransformer(
     ]
 )
 
-# AdaBoost model
 model = AdaBoostClassifier(
     estimator=DecisionTreeClassifier(max_depth=4, criterion="entropy", random_state=0),
     n_estimators=100,
@@ -54,7 +50,6 @@ pipeline = Pipeline([
     ("model", model)
 ])
 
-# Train model
 pipeline.fit(X, y_encoded)
 
 st.subheader("Enter Customer Information")
@@ -62,16 +57,18 @@ st.subheader("Enter Customer Information")
 input_data = {}
 
 for col in X.columns:
-    if X[col].dtype == "object":
-        options = sorted(X[col].dropna().unique())
-        input_data[col] = st.selectbox(col, options)
+    if col in categorical_cols:
+        options = sorted(X[col].dropna().astype(str).unique())
+        input_data[col] = st.selectbox(col.replace("_", " ").title(), options)
     else:
-        input_data[col] = st.number_input(col, value=float(X[col].mean()))
+        input_data[col] = st.number_input(
+            col.replace("_", " ").title(),
+            value=float(pd.to_numeric(X[col], errors="coerce").mean())
+        )
 
 input_df = pd.DataFrame([input_data])
 
 if st.button("Predict Policy Type"):
     prediction = pipeline.predict(input_df)
     result = labelencoder.inverse_transform(prediction)[0]
-
     st.success(f"Predicted Policy Type: {result}")
